@@ -19,13 +19,18 @@ public class sudoku_base : MonoBehaviour
 
     public Dictionary<sudoku_cell, int> cellValues = new();
 
+    // keep direct references for movement/select logic
+    private sudoku_cell[,] cells = new sudoku_cell[9, 9];
+
     private void OnEnable()
     {
         InputActionsManager.PausePressed += PauseGame;
+        InputActionsManager.MovePressed += OnMoveSelection;
     }
     private void OnDisable()
     {
         InputActionsManager.PausePressed -= PauseGame;
+        InputActionsManager.MovePressed -= OnMoveSelection;
     }
     void Start()
     {
@@ -153,6 +158,9 @@ public class sudoku_base : MonoBehaviour
                 cellValues.Add(cellComp, value);
                 bool isGiven = value != 0;
                 cellComp.Initialize(this, r, c, value, isGiven, label, img);
+
+                // store reference for movement/select
+                cells[r, c] = cellComp;
             }
         }
     }
@@ -185,6 +193,7 @@ public class sudoku_base : MonoBehaviour
         {
             // clear all highlights
             cellValues.Keys.ToList().ForEach(kv => kv.SetSelected(false));
+            sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
             return;
         }
         cellValues.Where(kv => kv.Value == value).ToList().ForEach(kv => kv.Key.SetSelected(true));
@@ -251,5 +260,33 @@ public class sudoku_base : MonoBehaviour
     {
         SceneManager.instance.DeactivateView(SceneManager.Scene.PauseMenu);
         timer.ResumeTimer();
+    }
+
+    // movement handler: dr = -1..1, dc = -1..1
+    private void OnMoveSelection(int dr, int dc)
+    {
+        if (dr == 0 && dc == 0) return;
+
+        var current = sudoku_cell.Selected;
+        sudoku_cell target = null;
+
+        if (current == null)
+        {
+            // if nothing selected, pick cell middle of grid
+            target = cells[4, 4];
+            if (target != null) sudoku_cell.Selected = target;
+            ShowAllSameValuesOnGrid(target.currentValue != 0 ? target.currentValue : null);
+            return;
+        }
+
+        // wrap-around movement: compute new coords modulo 9
+        int newR = (current.Row + dr + 9) % 9;
+        int newC = (current.Col + dc + 9) % 9;
+
+        // set selection to wrapped cell (includes given cells)
+        sudoku_cell.Selected = cells[newR, newC];
+
+        int currVal = sudoku_cell.Selected.currentValue;
+        ShowAllSameValuesOnGrid(currVal != 0 ? currVal : null);
     }
 }

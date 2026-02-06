@@ -13,7 +13,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     int row, col;
     bool isGiven;
     public bool isCorrect = false;
-    int currentValue;
+    public int currentValue { get; private set; }
     sudoku_base board;
 
     TMP_Text label;
@@ -27,6 +27,24 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
     // currently selected cell (keyboard target)
     static sudoku_cell s_selected;
+
+    // expose selection publicly so board/manager can move selection
+    public static sudoku_cell Selected
+    {
+        get => s_selected;
+        set
+        {
+            if (s_selected == value) return;
+            if (s_selected != null) s_selected.SetSelected(false);
+            s_selected = value;
+            if (s_selected != null) s_selected.SetSelected(true);
+        }
+    }
+
+    // public getters for row/col and given flag so movement logic can query
+    public int Row => row;
+    public int Col => col;
+    public bool IsGiven => isGiven;
 
     // current pencil markers for this cell (if any)
     Dictionary<int, GameObject> currentMarkers = new();
@@ -71,42 +89,26 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
         InputActionsManager.PausePressed -= OnPause;
     }
 
-    // property to manage selection and ensure previous selection is cleared
-    static sudoku_cell Selected
-    {
-        get => s_selected;
-        set
-        {
-            if (s_selected == value) return;
-            if (s_selected != null) s_selected.SetSelected(false);
-            s_selected = value;
-            if (s_selected != null) s_selected.SetSelected(true);
-        }
-    }
-
     public void OnPointerClick(PointerEventData eventData)
     {
-        board.ShowAllSameValuesOnGrid(currentValue == 0 ? null : currentValue);
-
-        if (isGiven)
-            return;
-
+        // select/deselect for keyboard input
         if (eventData.button == PointerEventData.InputButton.Left)
-        {
-            // select/deselect for keyboard input
             Selected = Selected == this ? null : this;
-        }
+
+        // deselect on right-click
         else if (eventData.button == PointerEventData.InputButton.Right)
-        {
-            // clear and select this cell for convenience
-            currentValue = 0;
-            ApplyChange();
-            Selected = this;
-        }
+            Selected = null;
+
+        bool showSame = currentValue != 0 && Selected != null;
+        board.ShowAllSameValuesOnGrid(showSame ? currentValue : null);
+
+
     }
     public void OnErase()
     {
-        if (Selected != this) return;
+        // early exit if cannot change
+        if (isGiven || isCorrect || Selected != this) return;
+
         currentValue = 0;
         ClearPencilMarkers();
         ApplyChange();
@@ -122,8 +124,8 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     // central handler for digit input; shiftPressed => pencil (marker), otherwise actual value
     void HandleDigitEntry(int number, bool shiftPressed)
     {
-        if (isGiven || isCorrect) return;
-        if (Selected != this) return;
+        // early exit if cannot change
+        if (isGiven || isCorrect || Selected != this) return;
 
         if (shiftPressed)
         {
