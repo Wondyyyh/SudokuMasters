@@ -43,11 +43,11 @@ public class sudoku_base : MonoBehaviour
     }
     void GenerateSolution()
     {
-        // start from empty
+        // create empty board
         for (int r = 0; r < 9; r++)
             for (int c = 0; c < 9; c++)
                 solution[r, c] = 0;
-
+        
         FillBoard(0, 0);
     }
     bool FillBoard(int row, int col)
@@ -165,13 +165,13 @@ public class sudoku_base : MonoBehaviour
         }
     }
     // called by cells when user changes a value
-    public void OnCellValueChanged(int row, int col, int value, bool correct, sudoku_cell cellComp)
+    public void OnCellValueChanged(int row, int col, int value, bool validMove, sudoku_cell cellComp)
     {
         if (puzzle[row, col] == value)
             return;
 
         puzzle[row, col] = value;
-        cellComp.isCorrect = value != 0 && correct;
+        cellComp.isCorrect = value != 0 && validMove;
 
         // optional: could do more bookkeeping here
         if (IsSolved())
@@ -179,7 +179,7 @@ public class sudoku_base : MonoBehaviour
             Debug.Log($"Sudoku solved in time of: {timer.StopTimer()}");
             SceneManager.instance.ActivateView(SceneManager.Scene.WinScreen);
         }
-        if (correct)
+        if (validMove)
         {
             if (value != 0) MovesCount++;
             cellValues[cellComp] = value;
@@ -198,6 +198,7 @@ public class sudoku_base : MonoBehaviour
         }
         cellValues.Where(kv => kv.Value == value).ToList().ForEach(kv => kv.Key.SetSelected(true));
         cellValues.Where(kv => kv.Value != value).ToList().ForEach(kv => kv.Key.SetSelected(false));
+        sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
     }
     public bool ValidateMove(int row, int col, int value)
     {

@@ -19,11 +19,9 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     TMP_Text label;
     public Image background;
 
-    Color givenColor = new Color(0.9f, 0.9f, 0.9f);
     Color normalColor = Color.white;
-    Color wrongColor = new Color(1f, 0.8f, 0.8f);
-    Color correctColor = new Color(0.8f, 1f, 0.8f);
-    Color selectedColor = new Color(0.8f, 0.92f, 1f);
+    Color selectedColor = new Color(0.5f, 0.92f, 1f);
+    Color highlightedColor = Color.darkGray;
 
     // currently selected cell (keyboard target)
     static sudoku_cell s_selected;
@@ -60,16 +58,6 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
         currentValue = value;
         UpdateVisuals();
-
-        if (isGiven)
-        {
-            // visually mark given cells
-            if (label != null) label.fontStyle = TMPro.FontStyles.Bold;
-            if (background != null) background.color = givenColor;
-
-            // ensure no pencil marks remain on given cells
-            ClearPencilMarkers();
-        }
     }
 
     void OnEnable()
@@ -142,17 +130,11 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
     void ApplyChange()
     {
-        UpdateVisuals();
         bool valid = board.ValidateMove(row, col, currentValue);
 
-        // color feedback (unless selected — selected overlay takes precedence)
-        if (background != null && Selected != this)
-        {
-            if (currentValue == 0) background.color = normalColor;
-            else background.color = valid ? correctColor : wrongColor;
-        }
-
         board.OnCellValueChanged(row, col, currentValue, valid, this);
+
+        UpdateVisuals();
     }
 
     // instantiate pencil marker under the appropriate child of lil_numbs_parent
@@ -186,25 +168,9 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     {
         if (background == null) return;
 
-        if (sel) background.color = selectedColor;
-
-        else
-        {
-            // restore color based on current value/validity or given status
-            if (isGiven)
-            {
-                background.color = givenColor;
-            }
-            else if (currentValue == 0)
-            {
-                background.color = normalColor;
-            }
-            else
-            {
-                bool valid = board.ValidateMove(row, col, currentValue);
-                background.color = valid ? normalColor : wrongColor;
-            }
-        }
+        if (sel)
+            background.color = this == Selected ? selectedColor : highlightedColor;
+        else background.color = normalColor;
     }
 
     void UpdateVisuals()
@@ -213,26 +179,9 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
         {
             label.text = currentValue == 0 ? "" : currentValue.ToString();
             label.fontStyle = TMPro.FontStyles.Bold;
-            label.color = isGiven ? Color.black : Color.blue;
-        }
 
-        // keep background consistent with selection or value
-        if (background != null)
-        {
-            if (Selected == this)
-            {
-                background.color = selectedColor;
-            }
-            else
-            {
-                if (isGiven) background.color = givenColor;
-                else if (currentValue == 0) background.color = normalColor;
-                else
-                {
-                    bool valid = board.ValidateMove(row, col, currentValue);
-                    background.color = valid ? correctColor : wrongColor;
-                }
-            }
+            if (isGiven) label.color = Color.black;
+            else label.color = isCorrect ? Color.blue : Color.red;
         }
     }
 }
