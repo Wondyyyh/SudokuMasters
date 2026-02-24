@@ -14,11 +14,12 @@ public class ProgressBar : MonoBehaviour
 
         // comeback to this when we have actual difficulty settings
         // for now just hardcode it to 40 removals
-        string difficulty = 40 switch
+        string difficulty = GameSettings.SelectedDifficulty switch
         {
-            <= 30 => "Easy",
-            <= 50 => "Medium",
-            _ => "Hard"
+            SudokuGenerator.Difficulty.Easy => "Easy",
+            SudokuGenerator.Difficulty.Medium => "Medium",
+            SudokuGenerator.Difficulty.Hard => "Hard",
+            _ => "Unknown"
         };
         LevelHardness_tmp.text = difficulty;
     }

@@ -12,6 +12,7 @@ public class SceneManager : MonoBehaviour
         WinScreen,
         Settings,
         GameTypeSelection,
+        HardnessSelection,
         PauseMenu
     }
     public Scene currScene;

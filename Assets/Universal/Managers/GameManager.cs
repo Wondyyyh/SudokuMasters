@@ -14,13 +14,17 @@ public class GameManager : MonoBehaviour
         else
             Destroy(gameObject);
     }
-    public void CreateGame(int index)
+    public void CreateGame(int hardness)
     {
-        GameIndex = index;
+        GameSettings.SelectedDifficulty = (SudokuGenerator.Difficulty)hardness;        
         // clear previous game if any
         foreach (Transform child in gameView)        
             Destroy(child.gameObject);
         
         Instantiate(gameTypes[GameIndex], gameView);
+    }
+    public void SetGameType(int type_i)
+    {
+        GameIndex = type_i;
     }
 }
