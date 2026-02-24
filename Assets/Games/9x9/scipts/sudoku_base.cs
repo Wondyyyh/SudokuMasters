@@ -20,7 +20,7 @@ public class sudoku_base : MonoBehaviour
 
     public Dictionary<sudoku_cell, int> cellValues = new();
 
-    SudokuGenerator_new SudokuGenerator = new SudokuGenerator_new();
+    SudokuGenerator SudokuGenerator = new SudokuGenerator();
 
     // keep direct references for movement/select logic
     private sudoku_cell[,] cells = new sudoku_cell[9, 9];

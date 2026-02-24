@@ -16,7 +16,7 @@ public class GameManager : MonoBehaviour
     }
     public void CreateGame(int hardness)
     {
-        GameSettings.SelectedDifficulty = (SudokuGenerator.Difficulty)hardness;        
+        GameSettings.SelectedDifficulty = (Difficulty)hardness;        
         // clear previous game if any
         foreach (Transform child in gameView)        
             Destroy(child.gameObject);

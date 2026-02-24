@@ -1,422 +1,648 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
-public static class SudokuGenerator
+public enum Difficulty
 {
-    private static System.Random rng = new System.Random();
-    public enum Difficulty
+    Easy,
+    Medium,
+    Hard
+}
+public struct DifficultyReport
+{
+    public float rating;
+    public int nakedSingles;
+    public int hiddenSingles;
+    public int nakedPairs;
+    public int advancedSteps;
+
+    public override string ToString()
     {
-        Easy,
-        Medium,
-        Hard
+        return $"Rating: {rating:F2} nS:{nakedSingles} hS:{hiddenSingles} nP:{nakedPairs} advS:{advancedSteps}";
     }
+}
+public struct DifficultyProfile
+{
+    public int minRemovals;
+    public int maxRemovals;
+    public float targetScore;
+}
 
-    // ================= PUBLIC API =================
-    public static (int[,] solution, int[,] puzzle, int removals) Generate
-        (Difficulty difficulty, int maxAttempts = 1000, bool debugDumpNearMisses = true)
+public class SudokuGenerator
+{
+    private bool[,,] candidates = new bool[9, 9, 10];
+    private const int Size = 9;
+    private System.Random rng = new System.Random();
+
+    #region PUBLIC API
+
+    public (int[,] solution, int[,] puzzle, int removals) Generate(Difficulty difficulty)
     {
-        // defaults for minimum empty cells per difficulty (used when settings == null)
-        const int DefaultMinEmptyEasy = 20;
-        const int DefaultMinEmptyMedium = 30;
-        const int DefaultMinEmptyHard = 40;
-
-        int[,] solution = new int[9, 9];
-        FillGridRandom(solution);
+        int[,] solution = new int[Size, Size];
+        FillBoard(solution);
 
         int[,] puzzle = (int[,])solution.Clone();
-        int removals = 0;
 
-        // Otherwise do attempts to find puzzle matching difficulty + minimum empty cells
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            puzzle = (int[,])solution.Clone();
-            var order = Enumerable.Range(0, 81).OrderBy(_ => rng.Next()).ToList();
+        int removals = RemoveNumbers(puzzle, difficulty);
 
-            foreach (int idx in order)
-            {
-                int r = idx / 9, c = idx % 9;
-                if (puzzle[r, c] == 0) continue;
+        DifficultyReport report = AnalyzeDifficulty(puzzle);
 
-                int backup = puzzle[r, c];
-                puzzle[r, c] = 0;
+        Debug.Log($"Removed: {removals}");
+        Debug.Log(report.ToString());
 
-                if (!HasUniqueSolution(puzzle))
-                {
-                    puzzle[r, c] = backup;
-                    continue;
-                }
-
-                var profile = LogicalSolver.Evaluate(puzzle);
-
-                // count empty cells (in-game moves)
-                int emptyCount = 0;
-                for (int rr = 0; rr < 9; rr++)
-                    for (int cc = 0; cc < 9; cc++)
-                        if (puzzle[rr, cc] == 0) emptyCount++;
-
-                // get threshold from settings or defaults
-                int minEmpty = difficulty switch
-                {
-                    Difficulty.Easy => DefaultMinEmptyEasy,
-                    Difficulty.Medium => DefaultMinEmptyMedium,
-                    Difficulty.Hard => DefaultMinEmptyHard,
-                    _ => DefaultMinEmptyMedium
-                };
-
-                if (Accept(profile, difficulty) && emptyCount >= minEmpty)
-                    return (solution, puzzle, removals);
-
-                // otherwise continue carving
-            }
-
-            // final safe-carve pass (no acceptance checks here)
-            for (int idx = 0; idx < 81; idx++)
-            {
-                int r = idx / 9, c = idx % 9;
-                if (puzzle[r, c] == 0) continue;
-                int backup = puzzle[r, c];
-                puzzle[r, c] = 0;
-                if (!HasUniqueSolution(puzzle))
-                {
-                    puzzle[r, c] = backup;
-                    continue;
-                }
-            }
-
-            if (debugDumpNearMisses && (attempt % 100 == 0))
-            {
-                Debug.Log($"SudokuGenerator: attempts {attempt}/{maxAttempts} so far, no matching puzzle yet.");
-            }
-        }
-
-        // fallback: return last carved puzzle
         return (solution, puzzle, removals);
     }
 
-    // ================= DIFFICULTY ACCEPTANCE =================
-    private static bool Accept(DifficultyProfile p, Difficulty d)
+    #endregion
+
+    #region FULL SOLUTION GENERATION
+
+    private bool FillBoard(int[,] board)
     {
-        return d switch
+        for (int row = 0; row < Size; row++)
         {
-            // require at least two logical assignments for easy by solver logic (kept)
-            Difficulty.Easy =>
-                p.usedPairs == false && p.stalled == false && p.assignmentCount >= 2,
-
-            Difficulty.Medium =>
-                p.usedPairs == true && p.stalled == false,
-
-            Difficulty.Hard =>
-                p.stalled == true,
-
-            _ => false
-        };
-    }
-
-    // ================= GRID GENERATION =================
-    private static bool FillGridRandom(int[,] grid)
-    {
-        for (int r = 0; r < 9; r++)
-        {
-            for (int c = 0; c < 9; c++)
+            for (int col = 0; col < Size; col++)
             {
-                if (grid[r, c] != 0) continue;
-
-                var nums = Enumerable.Range(1, 9).OrderBy(_ => rng.Next()).ToList();
-                foreach (int n in nums)
+                if (board[row, col] == 0)
                 {
-                    if (IsSafe(grid, r, c, n))
+                    List<int> numbers = GetShuffledNumbers();
+
+                    foreach (int num in numbers)
                     {
-                        grid[r, c] = n;
-                        if (FillGridRandom(grid)) return true;
-                        grid[r, c] = 0;
+                        if (IsValid(board, row, col, num))
+                        {
+                            board[row, col] = num;
+
+                            if (FillBoard(board))
+                                return true;
+
+                            board[row, col] = 0;
+                        }
                     }
+
+                    return false;
                 }
-                return false;
             }
         }
+
         return true;
     }
-    private static bool IsSafe(int[,] grid, int r, int c, int n)
+
+    private List<int> GetShuffledNumbers()
     {
-        for (int i = 0; i < 9; i++)
+        List<int> numbers = new List<int>();
+        for (int i = 1; i <= 9; i++)
+            numbers.Add(i);
+
+        for (int i = 0; i < numbers.Count; i++)
         {
-            if (grid[r, i] == n || grid[i, c] == n)
-                return false;
+            int swapIndex = rng.Next(numbers.Count);
+            int temp = numbers[i];
+            numbers[i] = numbers[swapIndex];
+            numbers[swapIndex] = temp;
         }
 
-        int br = (r / 3) * 3;
-        int bc = (c / 3) * 3;
-        for (int rr = br; rr < br + 3; rr++)
-            for (int cc = bc; cc < bc + 3; cc++)
-                if (grid[rr, cc] == n)
+        return numbers;
+    }
+
+    #endregion
+
+    #region REMOVE NUMBERS BY DIFFICULTY
+
+    private int RemoveNumbers(int[,] board, Difficulty difficulty)
+    {
+        DifficultyProfile profile = GetProfile(difficulty);
+
+        List<Vector2Int> cells = new List<Vector2Int>();
+        for (int r = 0; r < 9; r++)
+            for (int c = 0; c < 9; c++)
+                cells.Add(new Vector2Int(r, c));
+
+        ShuffleCells(cells);
+
+        int[,] bestBoard = (int[,])board.Clone();
+        int removals = 0;
+
+        foreach (var cell in cells)
+        {
+            int backup = board[cell.x, cell.y];
+            board[cell.x, cell.y] = 0;
+
+            if (CountSolutions((int[,])board.Clone()) != 1)
+            {
+                board[cell.x, cell.y] = backup;
+                continue;
+            }
+
+            removals++;
+
+            DifficultyReport report = AnalyzeDifficulty(board);
+
+            if (removals >= profile.minRemovals)
+            {
+                if (report.rating > profile.targetScore)
+                {
+                    board[cell.x, cell.y] = backup;
+                    removals--;
+                    break;
+                }
+
+                bestBoard = (int[,])board.Clone();
+            }
+
+            if (removals >= profile.maxRemovals)
+                break;
+        }
+
+        Array.Copy(bestBoard, board, bestBoard.Length);
+
+        return removals;
+    }
+    #endregion
+
+    #region VALIDATION
+
+    private bool IsValid(int[,] board, int row, int col, int num)
+    {
+        for (int i = 0; i < Size; i++)
+        {
+            if (board[row, i] == num) return false;
+            if (board[i, col] == num) return false;
+        }
+
+        int boxRow = row / 3 * 3;
+        int boxCol = col / 3 * 3;
+
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                if (board[boxRow + r, boxCol + c] == num)
                     return false;
 
         return true;
     }
 
-    // ================= UNIQUE SOLUTION =================
-    private static bool HasUniqueSolution(int[,] grid)
+    #endregion
+
+    #region SOLUTION COUNTER (UNIQUENESS CHECK)
+
+    private int CountSolutions(int[,] board)
     {
         int count = 0;
-        SolveCount((int[,])grid.Clone(), ref count);
-        return count == 1;
+        SolveCount(board, ref count);
+        return count;
     }
-    private static void SolveCount(int[,] grid, ref int count)
-    {
-        if (count > 1) return;
 
-        for (int r = 0; r < 9; r++)
+    private void SolveCount(int[,] board, ref int count)
+    {
+        if (count > 1)
+            return;
+
+        for (int row = 0; row < Size; row++)
         {
-            for (int c = 0; c < 9; c++)
+            for (int col = 0; col < Size; col++)
             {
-                if (grid[r, c] == 0)
+                if (board[row, col] == 0)
                 {
-                    for (int n = 1; n <= 9; n++)
+                    for (int num = 1; num <= 9; num++)
                     {
-                        if (IsSafe(grid, r, c, n))
+                        if (IsValid(board, row, col, num))
                         {
-                            grid[r, c] = n;
-                            SolveCount(grid, ref count);
-                            grid[r, c] = 0;
+                            board[row, col] = num;
+                            SolveCount(board, ref count);
+                            board[row, col] = 0;
                         }
                     }
                     return;
                 }
             }
         }
+
         count++;
     }
-}
 
-// ================= LOGICAL SOLVER =================
-public struct DifficultyProfile
-{
-    public bool usedPairs;
-    public bool stalled;
-    // number of logical assignments
-    // (naked/hidden singles assigned) performed by solver
-    public int assignmentCount;
-}
-public static class LogicalSolver
-{
-    public static DifficultyProfile Evaluate(int[,] puzzle)
+    #endregion
+
+    #region Difficulty mapping
+    private DifficultyProfile GetProfile(Difficulty difficulty)
     {
-        var cands = InitCandidates(puzzle);
-        bool usedPairs = false;
-        int assignmentCount = 0;
-
-        while (true)
+        switch (difficulty)
         {
-            bool progress = false;
-
-            // count assigned before singles
-            int beforeAssigned = cands.Count(s => s.Count == 1);
-            if (ApplyNakedSingles(cands))
-            {
-                int afterAssigned = cands.Count(s => s.Count == 1);
-                assignmentCount += Math.Max(0, afterAssigned - beforeAssigned);
-                progress = true;
-                continue;
-            }
-
-            // hidden singles also produce assignments
-            beforeAssigned = cands.Count(s => s.Count == 1);
-            if (ApplyHiddenSingles(cands))
-            {
-                int afterAssigned = cands.Count(s => s.Count == 1);
-                assignmentCount += Math.Max(0, afterAssigned - beforeAssigned);
-                progress = true;
-                continue;
-            }
-
-            if (ApplyNakedPairs(cands))
-            {
-                usedPairs = true;
-                progress = true;
-                continue;
-            }
-
-            // no further basic progress
-            if (!progress) break;
-        }
-
-        bool stalled = cands.Any(s => s.Count > 1);
-        return new DifficultyProfile
-        {
-            usedPairs = usedPairs,
-            stalled = stalled,
-            assignmentCount = assignmentCount
-        };
-    }
-    private static HashSet<int>[] InitCandidates(int[,] grid)
-    {
-        var c = new HashSet<int>[81];
-        for (int i = 0; i < 81; i++)
-        {
-            int r = i / 9, col = i % 9;
-            if (grid[r, col] != 0)
-                c[i] = new HashSet<int> { grid[r, col] };
-            else
-            {
-                c[i] = new HashSet<int>();
-                for (int n = 1; n <= 9; n++)
-                    if (IsSafe(grid, r, col, n))
-                        c[i].Add(n);
-            }
-        }
-        return c;
-    }
-
-    private static bool ApplyNakedSingles(HashSet<int>[] cands)
-    {
-        bool changed = false;
-
-        for (int i = 0; i < 81; i++)
-        {
-            if (cands[i].Count == 1)
-            {
-                int v = cands[i].First();
-                int r = i / 9, c = i % 9;
-
-                foreach (int p in Peers(r, c))
+            case Difficulty.Easy:
+                return new DifficultyProfile
                 {
-                    if (cands[p].Remove(v))
-                        changed = true;
-                }
-            }
+                    minRemovals = 32,
+                    maxRemovals = 40,
+                    targetScore = 80f
+                };
+
+            case Difficulty.Medium:
+                return new DifficultyProfile
+                {
+                    minRemovals = 40,
+                    maxRemovals = 52,
+                    targetScore = 220f
+                };
+
+            case Difficulty.Hard:
+                return new DifficultyProfile
+                {
+                    minRemovals = 50,
+                    maxRemovals = 60,
+                    targetScore = 450f
+                };
         }
 
-        return changed;
+        return default;
     }
-    private static bool ApplyHiddenSingles(HashSet<int>[] cands)
+    #endregion
+
+    #region DIFFICULTY ANALYZER
+
+    public DifficultyReport AnalyzeDifficulty(int[,] original)
     {
-        bool changed = false;
-        // rows
+        int[,] board = (int[,])original.Clone();
+
+        DifficultyReport report = new DifficultyReport();
+        float score = 0f;
+
+        BuildCandidates(board);
+
+        bool progress;
+
+        do
+        {
+            progress = false;
+
+            while (ApplyNakedSingles(board))
+            {
+                report.nakedSingles++;
+                score += 1f;
+                progress = true;
+            }
+
+            while (ApplyHiddenSingles(board))
+            {
+                report.hiddenSingles++;
+                score += 2f;
+                progress = true;
+            }
+
+            while (ApplyNakedPairs())
+            {
+                report.nakedPairs++;
+                score += 6f;
+                progress = true;
+            }
+
+            while (ApplyHiddenPairs())
+            {
+                report.advancedSteps++;
+                score += 8f;
+                progress = true;
+            }
+
+            while (ApplyPointing())
+            {
+                report.advancedSteps++;
+                score += 10f;
+                progress = true;
+            }
+
+            while (ApplyXWing())
+            {
+                report.advancedSteps++;
+                score += 25f;
+                progress = true;
+            }
+
+        } while (progress);
+
+        if (!IsSolved(board))
+        {
+            score += 50f;
+            report.advancedSteps++;
+        }
+
+        report.rating = score;
+        return report;
+    }
+
+    private bool IsSolved(int[,] board)
+    {
         for (int r = 0; r < 9; r++)
-        {
-            for (int digit = 1; digit <= 9; digit++)
-            {
-                var positions = new List<int>();
-                for (int c = 0; c < 9; c++)
-                    if (cands[r * 9 + c].Contains(digit)) positions.Add(r * 9 + c);
-                if (positions.Count == 1)
-                {
-                    var set = cands[positions[0]];
-                    if (set.Count > 1) { set.RemoveWhere(x => x != digit); changed = true; }
-                }
-            }
-        }
-        // cols
-        for (int c = 0; c < 9; c++)
-        {
-            for (int digit = 1; digit <= 9; digit++)
-            {
-                var positions = new List<int>();
-                for (int r = 0; r < 9; r++)
-                    if (cands[r * 9 + c].Contains(digit)) positions.Add(r * 9 + c);
-                if (positions.Count == 1)
-                {
-                    var set = cands[positions[0]];
-                    if (set.Count > 1) { set.RemoveWhere(x => x != digit); changed = true; }
-                }
-            }
-        }
-        // boxes
-        for (int br = 0; br < 3; br++)
-            for (int bc = 0; bc < 3; bc++)
-            {
-                for (int digit = 1; digit <= 9; digit++)
-                {
-                    var positions = new List<int>();
-                    for (int r = br * 3; r < br * 3 + 3; r++)
-                        for (int c = bc * 3; c < bc + 3; c++)
-                            if (cands[r * 9 + c].Contains(digit)) positions.Add(r * 9 + c);
-                    if (positions.Count == 1)
-                    {
-                        var set = cands[positions[0]];
-                        if (set.Count > 1) { set.RemoveWhere(x => x != digit); changed = true; }
-                    }
-                }
-            }
-
-        return changed;
-    }
-    private static bool ApplyNakedPairs(HashSet<int>[] cands)
-    {
-        bool changed = false;
-
-        foreach (var unit in Units())
-        {
-            var pairs = unit
-                .Where(i => cands[i].Count == 2)
-                .GroupBy(i => string.Join(",", cands[i].OrderBy(x => x)))
-                .Where(g => g.Count() == 2);
-
-            foreach (var g in pairs)
-            {
-                var nums = cands[g.First()];
-                foreach (int i in unit.Except(g))
-                {
-                    foreach (int n in nums)
-                        if (cands[i].Remove(n))
-                            changed = true;
-                }
-            }
-        }
-
-        return changed;
-    }
-    private static IEnumerable<int> Peers(int r, int c)
-    {
-        var set = new HashSet<int>();
-
-        for (int i = 0; i < 9; i++)
-        {
-            set.Add(r * 9 + i);
-            set.Add(i * 9 + c);
-        }
-
-        int br = (r / 3) * 3;
-        int bc = (c / 3) * 3;
-        for (int rr = br; rr < br + 3; rr++)
-            for (int cc = bc; cc < bc + 3; cc++)
-                set.Add(rr * 9 + cc);
-
-        // exclude the cell itself
-        set.Remove(r * 9 + c);
-
-        return set;
-    }
-    private static IEnumerable<IEnumerable<int>> Units()
-    {
-        for (int i = 0; i < 9; i++)
-        {
-            yield return Enumerable.Range(0, 9).Select(c => i * 9 + c); // row
-            yield return Enumerable.Range(0, 9).Select(r => r * 9 + i); // col
-        }
-
-        for (int br = 0; br < 3; br++)
-            for (int bc = 0; bc < 3; bc++)
-            {
-                yield return Enumerable.Range(0, 9)
-                    .Select(i => (br * 3 + i / 3) * 9 + (bc * 3 + i % 3));
-            }
-    }
-    private static bool IsSafe(int[,] grid, int r, int c, int n)
-    {
-        for (int i = 0; i < 9; i++)
-            if (grid[r, i] == n || grid[i, c] == n)
-                return false;
-
-        int br = (r / 3) * 3;
-        int bc = (c / 3) * 3;
-        for (int rr = br; rr < br + 3; rr++)
-            for (int cc = bc; cc < bc + 3; cc++)
-                if (grid[rr, cc] == n)
+            for (int c = 0; c < 9; c++)
+                if (board[r, c] == 0)
                     return false;
 
         return true;
+    }
+
+    #region Solving techniques
+    private bool ApplyNakedSingles(int[,] board)
+    {
+        bool changed = false;
+
+        for (int r = 0; r < 9; r++)
+        {
+            for (int c = 0; c < 9; c++)
+            {
+                if (board[r, c] != 0) continue;
+
+                int count = 0;
+                int last = 0;
+
+                for (int n = 1; n <= 9; n++)
+                {
+                    if (candidates[r, c, n])
+                    {
+                        count++;
+                        last = n;
+                    }
+                }
+
+                if (count == 1)
+                {
+                    PlaceNumber(board, r, c, last);
+                    changed = true;
+                }
+            }
+        }
+
+        return changed;
+    }
+    private bool ApplyHiddenSingles(int[,] board)
+    {
+        bool changed = false;
+
+        for (int row = 0; row < 9; row++)
+        {
+            for (int n = 1; n <= 9; n++)
+            {
+                int count = 0;
+                int colIndex = -1;
+
+                for (int col = 0; col < 9; col++)
+                {
+                    if (candidates[row, col, n])
+                    {
+                        count++;
+                        colIndex = col;
+                    }
+                }
+
+                if (count == 1)
+                {
+                    PlaceNumber(board, row, colIndex, n);
+                    changed = true;
+                }
+            }
+        }
+
+        return changed;
+    }
+    private bool ApplyNakedPairs()
+    {
+        bool changed = false;
+
+        for (int row = 0; row < 9; row++)
+        {
+            Dictionary<string, List<int>> pairs = new();
+
+            for (int col = 0; col < 9; col++)
+            {
+                List<int> list = new();
+
+                for (int n = 1; n <= 9; n++)
+                    if (candidates[row, col, n])
+                        list.Add(n);
+
+                if (list.Count == 2)
+                {
+                    string key = list[0] + "," + list[1];
+                    if (!pairs.ContainsKey(key))
+                        pairs[key] = new List<int>();
+
+                    pairs[key].Add(col);
+                }
+            }
+
+            foreach (var pair in pairs)
+            {
+                if (pair.Value.Count == 2)
+                {
+                    var nums = pair.Key.Split(',');
+                    int n1 = int.Parse(nums[0]);
+                    int n2 = int.Parse(nums[1]);
+
+                    for (int col = 0; col < 9; col++)
+                    {
+                        if (!pair.Value.Contains(col))
+                        {
+                            if (candidates[row, col, n1]) { candidates[row, col, n1] = false; changed = true; }
+                            if (candidates[row, col, n2]) { candidates[row, col, n2] = false; changed = true; }
+                        }
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+    private bool ApplyHiddenPairs()
+    {
+        bool changed = false;
+
+        for (int row = 0; row < 9; row++)
+        {
+            for (int n1 = 1; n1 <= 8; n1++)
+            {
+                for (int n2 = n1 + 1; n2 <= 9; n2++)
+                {
+                    List<int> cols = new();
+
+                    for (int col = 0; col < 9; col++)
+                        if (candidates[row, col, n1] && candidates[row, col, n2])
+                            cols.Add(col);
+
+                    if (cols.Count == 2)
+                    {
+                        for (int n = 1; n <= 9; n++)
+                        {
+                            if (n == n1 || n == n2) continue;
+
+                            if (candidates[row, cols[0], n]) { candidates[row, cols[0], n] = false; changed = true; }
+                            if (candidates[row, cols[1], n]) { candidates[row, cols[1], n] = false; changed = true; }
+                        }
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+    private bool ApplyPointing()
+    {
+        bool changed = false;
+
+        for (int box = 0; box < 9; box++)
+        {
+            int br = (box / 3) * 3;
+            int bc = (box % 3) * 3;
+
+            for (int n = 1; n <= 9; n++)
+            {
+                List<Vector2Int> cells = new List<Vector2Int>();
+
+                for (int r = 0; r < 3; r++)
+                    for (int c = 0; c < 3; c++)
+                        if (candidates[br + r, bc + c, n])
+                            cells.Add(new Vector2Int(br + r, bc + c));
+
+                if (cells.Count >= 2)
+                {
+                    bool sameRow = cells.TrueForAll(x => x.x == cells[0].x);
+                    bool sameCol = cells.TrueForAll(x => x.y == cells[0].y);
+
+                    if (sameRow)
+                    {
+                        int row = cells[0].x;
+                        for (int col = 0; col < 9; col++)
+                        {
+                            if (col < bc || col >= bc + 3)
+                                if (candidates[row, col, n]) { candidates[row, col, n] = false; changed = true; }
+                        }
+                    }
+
+                    if (sameCol)
+                    {
+                        int col = cells[0].y;
+                        for (int row = 0; row < 9; row++)
+                        {
+                            if (row < br || row >= br + 3)
+                                if (candidates[row, col, n]) { candidates[row, col, n] = false; changed = true; }
+                        }
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+    private bool ApplyXWing()
+    {
+        bool changed = false;
+
+        for (int n = 1; n <= 9; n++)
+        {
+            for (int r1 = 0; r1 < 8; r1++)
+            {
+                var cols1 = GetCandidateCols(r1, n);
+                if (cols1.Count != 2) continue;
+
+                for (int r2 = r1 + 1; r2 < 9; r2++)
+                {
+                    var cols2 = GetCandidateCols(r2, n);
+                    if (cols2.Count != 2) continue;
+
+                    if (cols1[0] == cols2[0] && cols1[1] == cols2[1])
+                    {
+                        foreach (int col in cols1)
+                        {
+                            for (int r = 0; r < 9; r++)
+                            {
+                                if (r != r1 && r != r2 && candidates[r, col, n])
+                                {
+                                    candidates[r, col, n] = false;
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    #endregion
+
+    private List<int> GetCandidates(int[,] board, int row, int col)
+    {
+        List<int> candidates = new List<int>();
+
+        for (int num = 1; num <= 9; num++)
+            if (IsValid(board, row, col, num))
+                candidates.Add(num);
+
+        return candidates;
+    }
+    private List<int> GetCandidateCols(int row, int n)
+    {
+        List<int> cols = new();
+        for (int col = 0; col < 9; col++)
+            if (candidates[row, col, n])
+                cols.Add(col);
+
+        return cols;
+    }
+    private List<int> GetCandidateRows(int col, int number)
+    {
+        List<int> rows = new List<int>();
+
+        for (int row = 0; row < 9; row++)
+        {
+            if (candidates[row, col, number])
+                rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    #endregion
+
+    private void ShuffleCells(List<Vector2Int> cells)
+    {
+        for (int i = 0; i < cells.Count; i++)
+        {
+            int swapIndex = rng.Next(cells.Count);
+            var temp = cells[i];
+            cells[i] = cells[swapIndex];
+            cells[swapIndex] = temp;
+        }
+    }
+
+    private void BuildCandidates(int[,] board)
+    {
+        for (int r = 0; r < 9; r++)
+        {
+            for (int c = 0; c < 9; c++)
+            {
+                for (int n = 1; n <= 9; n++)
+                {
+                    candidates[r, c, n] = board[r, c] == 0 && IsValid(board, r, c, n);
+                }
+            }
+        }
+    }
+    private void PlaceNumber(int[,] board, int row, int col, int num)
+    {
+        board[row, col] = num;
+
+        for (int n = 1; n <= 9; n++)
+            candidates[row, col, n] = false;
+
+        for (int i = 0; i < 9; i++)
+        {
+            candidates[row, i, num] = false;
+            candidates[i, col, num] = false;
+        }
+
+        int br = row / 3 * 3;
+        int bc = col / 3 * 3;
+
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                candidates[br + r, bc + c, num] = false;
     }
 }
