@@ -121,16 +121,18 @@ public class sudoku_base : MonoBehaviour
     }
     public void ShowAllSameValuesOnGrid(int? value)
     {
+        var keys = cellValues.Keys.ToList();
+        keys.Remove(sudoku_cell.Selected); // exclude currently selected cell
         if (value == null)
         {
             // clear all highlights
-            cellValues.Keys.ToList().ForEach(kv => kv.SetSelected(false));
-            sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
+            keys.ForEach(kv => kv.SetSelected(false));
+            //sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
             return;
         }
-        cellValues.Where(kv => kv.Value == value).ToList().ForEach(kv => kv.Key.SetSelected(true));
-        cellValues.Where(kv => kv.Value != value).ToList().ForEach(kv => kv.Key.SetSelected(false));
-        sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
+        keys.Where(kv => kv.currentValue == value).ToList().ForEach(kv => kv.SetSelected(true));
+        keys.Where(kv => kv.currentValue != value).ToList().ForEach(kv => kv.SetSelected(false));
+        //sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
     }
     public bool ValidateMove(int row, int col, int value)
     {

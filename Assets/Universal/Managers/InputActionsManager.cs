@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
@@ -13,7 +14,7 @@ public class InputActionsManager : MonoBehaviour
     // Movement: delta row, delta col (row -1 = up, +1 = down; col -1 = left, +1 = right)
     public static event Action<int, int> MovePressed;
 
-    private InputAction numbs;
+    private InputAction[] numbs;
     private InputAction erase;
     private InputAction pause;
     private InputAction move;
@@ -27,19 +28,22 @@ public class InputActionsManager : MonoBehaviour
     private void Awake()
     {
         // Create actions before using them
-        numbs = new InputAction("NumberKey", InputActionType.Button);
+        // create one InputAction per number so simultaneous presses each fire
+        numbs = new InputAction[9];
         erase = new InputAction("Erase", InputActionType.Button);
         pause = new InputAction("Pause", InputActionType.Button);
 
         // Move is a Vector2 value coming from a 2D composite (WASD and arrows)
         move = new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2");
 
-        // Explicitly add bindings for top row and numpad
+        // Explicitly add bindings for top row and numpad - each action gets its own bindings
         for (int i = 1; i <= 9; i++)
         {
+            int idx = i - 1;
+            numbs[idx] = new InputAction($"NumberKey{i}", InputActionType.Button);
             // explicit top-row (digit) and numpad keys
-            numbs.AddBinding($"<Keyboard>/digit{i}");
-            numbs.AddBinding($"<Keyboard>/numpad{i}");
+            numbs[idx].AddBinding($"<Keyboard>/digit{i}");
+            numbs[idx].AddBinding($"<Keyboard>/numpad{i}");
         }
 
         erase.AddBinding("<Keyboard>/backspace");
@@ -60,16 +64,30 @@ public class InputActionsManager : MonoBehaviour
             .With("right", "<Keyboard>/rightArrow");
 
         // Subscribe handlers
-        numbs.performed += OnNumberKey;
+        // Each number action will invoke NumberPressed on performed
         erase.performed += OnErase;
         pause.performed += OnPause;
+        for (int i = 1; i <= 9; i++)
+        {
+            int idx = i - 1;
+            int number = i; // capture for lambda
+            numbs[idx].performed += ctx =>
+            {
+                if (!ctx.performed) return;
+                bool shifted =
+                    Keyboard.current?.leftShiftKey?.isPressed == true ||
+                    Keyboard.current?.rightShiftKey?.isPressed == true;
+                NumberPressed?.Invoke(number, shifted);
+            };
+        }
 
         // movement: use started/canceled to support repeat on hold
         move.started += OnMoveStarted;
         move.canceled += OnMoveCanceled;
 
         // Enable after setup
-        numbs.Enable();
+        for (int i = 0; i < numbs.Length; i++)
+            numbs[i].Enable();
         erase.Enable();
         pause.Enable();
         move.Enable();
@@ -78,7 +96,11 @@ public class InputActionsManager : MonoBehaviour
     private void OnDisable()
     {
         // disable to stop receiving events
-        numbs?.Disable();
+        if (numbs != null)
+        {
+            for (int i = 0; i < numbs.Length; i++)
+                numbs[i]?.Disable();
+        }
         erase?.Disable();
         pause?.Disable();
         move?.Disable();
@@ -91,8 +113,15 @@ public class InputActionsManager : MonoBehaviour
         // unsubscribe and dispose to avoid leaks
         if (numbs != null)
         {
-            numbs.performed -= OnNumberKey;
-            numbs.Dispose();
+            for (int i = 0; i < numbs.Length; i++)
+            {
+                if (numbs[i] != null)
+                {
+                    // dispose will remove subscriptions
+                    numbs[i].Dispose();
+                    numbs[i] = null;
+                }
+            }
             numbs = null;
         }
 

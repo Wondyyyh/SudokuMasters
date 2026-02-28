@@ -9,7 +9,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     [SerializeField] private GameObject lil_numb_pref;
     [SerializeField] private GameObject lil_numbs_parent;
     int row, col;
-    bool isGiven;
+    bool isGiven, waitingForMarker = false;
     public bool isCorrect = false;
     public int currentValue { get; private set; }
     sudoku_base board;
@@ -81,15 +81,14 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
         if (eventData.button == PointerEventData.InputButton.Left)
             Selected = Selected == this ? null : this;
 
-        // deselect on right-click
+        // select for pencil marker input
         else if (eventData.button == PointerEventData.InputButton.Right)
-            Selected = null;
+        { Selected = Selected == this ? null : this; waitingForMarker = true; }
 
         bool showSame = currentValue != 0 && Selected != null;
         board.ShowAllSameValuesOnGrid(showSame ? currentValue : null);
-
-
     }
+
     public void OnErase()
     {
         // early exit if cannot change
@@ -113,7 +112,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
         // early exit if cannot change
         if (isGiven || isCorrect || Selected != this) return;
 
-        if (shiftPressed)
+        if (shiftPressed || waitingForMarker)
         {
             ShowPencilMarker(number);
         }
@@ -164,11 +163,11 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
     public void SetSelected(bool sel)
     {
-        if (background == null) return;
+        if (background == null) return; // safety check
 
-        if (sel)
-            background.color = this == Selected ? selectedColor : highlightedColor;
-        else background.color = normalColor;
+        if (sel)        
+            background.color = this == Selected ? selectedColor : highlightedColor;        
+        else { background.color = normalColor; waitingForMarker = false; }
     }
 
     void UpdateVisuals()

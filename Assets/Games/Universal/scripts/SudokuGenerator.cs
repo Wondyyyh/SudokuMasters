@@ -35,7 +35,6 @@ public class SudokuGenerator
     private System.Random rng = new System.Random();
 
     #region PUBLIC API
-
     public (int[,] solution, int[,] puzzle, int removals) Generate(Difficulty difficulty)
     {
         int[,] solution = new int[Size, Size];
@@ -52,11 +51,9 @@ public class SudokuGenerator
 
         return (solution, puzzle, removals);
     }
-
     #endregion
 
     #region FULL SOLUTION GENERATION
-
     private bool FillBoard(int[,] board)
     {
         for (int row = 0; row < Size; row++)
@@ -104,7 +101,6 @@ public class SudokuGenerator
 
         return numbers;
     }
-
     #endregion
 
     #region REMOVE NUMBERS BY DIFFICULTY
@@ -611,7 +607,6 @@ public class SudokuGenerator
             cells[swapIndex] = temp;
         }
     }
-
     private void BuildCandidates(int[,] board)
     {
         for (int r = 0; r < 9; r++)
