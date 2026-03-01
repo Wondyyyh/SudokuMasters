@@ -16,11 +16,11 @@ public class GameManager : MonoBehaviour
     }
     public void CreateGame(int hardness)
     {
-        GameSettings.SelectedDifficulty = (Difficulty)hardness;        
+        StartCoroutine(GameSettings.SelectDifficulty_and_InitGame((Difficulty)hardness));
         // clear previous game if any
-        foreach (Transform child in gameView)        
+        foreach (Transform child in gameView)
             Destroy(child.gameObject);
-        
+
         Instantiate(gameTypes[GameIndex], gameView);
     }
     public void SetGameType(int type_i)

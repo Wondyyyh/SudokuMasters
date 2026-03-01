@@ -10,17 +10,17 @@ public class sudoku_base : MonoBehaviour
 {
     int[,] solution = new int[9, 9];
     int[,] puzzle = new int[9, 9];
-
-    [SerializeField] private GameObject cellPrefab;    
     public int removals = 40; // legacy field (kept for inspector compatibility)
     public int MovesCount = 0;
+
+    [SerializeField] private GameObject cellPrefab;
     public RectTransform gridParent;
     OnScreenTimer timer => GetComponentInChildren<OnScreenTimer>();
     ProgressBar progressBar => GetComponentInChildren<ProgressBar>();
 
     public Dictionary<sudoku_cell, int> cellValues = new();
 
-    SudokuGenerator SudokuGenerator = new SudokuGenerator();
+    SudokuGenerator SudokuGenerator = new();
 
     // keep direct references for movement/select logic
     private sudoku_cell[,] cells = new sudoku_cell[9, 9];
@@ -35,31 +35,20 @@ public class sudoku_base : MonoBehaviour
         InputActionsManager.PausePressed -= PauseGame;
         InputActionsManager.MovePressed -= OnMoveSelection;
     }
-    void Start()
-    {       
-        StartCoroutine(GenerateSudoku());
-    }
-    IEnumerator GenerateSudoku()
+    IEnumerator Start()
     {
-        yield return null; // anna yksi frame väliin
+        // wait until sudokugenerator finishes
+        yield return new WaitUntil(() => SudokuGenerator.puzzle != null);
 
-        // pick difficulty from GameSettings
-        Difficulty diff = (Difficulty)GameSettings.SelectedDifficulty;
-
-        var (genSolution, genPuzzle, genRemovals) = SudokuGenerator.Generate(diff);
-        solution = genSolution;
-        puzzle = genPuzzle;
-        removals = genRemovals;
-
-        Debug.Log("Sudoku valmis!");
-
-        yield return null;
+        solution = SudokuGenerator.solution;
+        puzzle = SudokuGenerator.puzzle;
+        removals = SudokuGenerator.removals;
 
         BuildGrid();
         // init bar and count text
         progressBar.UpdateProgressVisuals(removals, MovesCount);
-
     }
+
     void BuildGrid()
     {
         // clear existing children if any
@@ -121,18 +110,20 @@ public class sudoku_base : MonoBehaviour
     }
     public void ShowAllSameValuesOnGrid(int? value)
     {
+        // create temp list and exclude curr selection
         var keys = cellValues.Keys.ToList();
-        keys.Remove(sudoku_cell.Selected); // exclude currently selected cell
+        keys.Remove(sudoku_cell.Selected);
+
+        // empty cell selected, clear all highlights
         if (value == null)
-        {
-            // clear all highlights
             keys.ForEach(kv => kv.SetSelected(false));
-            //sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
-            return;
+
+        // higlight all cells with same value as current selected cell
+        else
+        {
+            keys.Where(kv => kv.currentValue == value).ToList().ForEach(kv => kv.SetSelected(true));
+            keys.Where(kv => kv.currentValue != value).ToList().ForEach(kv => kv.SetSelected(false));
         }
-        keys.Where(kv => kv.currentValue == value).ToList().ForEach(kv => kv.SetSelected(true));
-        keys.Where(kv => kv.currentValue != value).ToList().ForEach(kv => kv.SetSelected(false));
-        //sudoku_cell.Selected?.SetSelected(true); // keep current selected highlighted
     }
     public bool ValidateMove(int row, int col, int value)
     {

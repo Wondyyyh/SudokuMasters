@@ -13,7 +13,8 @@ public class SceneManager : MonoBehaviour
         Settings,
         GameTypeSelection,
         HardnessSelection,
-        PauseMenu
+        PauseMenu,
+        ProfileView
     }
     public Scene currScene;
 

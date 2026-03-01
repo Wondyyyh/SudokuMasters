@@ -33,23 +33,26 @@ public class SudokuGenerator
     private bool[,,] candidates = new bool[9, 9, 10];
     private const int Size = 9;
     private System.Random rng = new System.Random();
+    public static int[,] solution, puzzle;
+    public static int removals;
 
     #region PUBLIC API
-    public (int[,] solution, int[,] puzzle, int removals) Generate(Difficulty difficulty)
+    public void Generate(Difficulty difficulty)
     {
-        int[,] solution = new int[Size, Size];
+        // create solution
+        solution = new int[Size, Size];
         FillBoard(solution);
 
-        int[,] puzzle = (int[,])solution.Clone();
+        // create puzzle
+        puzzle = (int[,])solution.Clone();
 
-        int removals = RemoveNumbers(puzzle, difficulty);
+        // remove numbers based on difficulty
+        removals = RemoveNumbers(puzzle, difficulty);
 
+        // analyze difficulty of the final puzzle and log results
         DifficultyReport report = AnalyzeDifficulty(puzzle);
-
         Debug.Log($"Removed: {removals}");
         Debug.Log(report.ToString());
-
-        return (solution, puzzle, removals);
     }
     #endregion
 
@@ -228,7 +231,7 @@ public class SudokuGenerator
                 {
                     minRemovals = 32,
                     maxRemovals = 40,
-                    targetScore = 80f
+                    targetScore = 10f
                 };
 
             case Difficulty.Medium:
@@ -236,7 +239,7 @@ public class SudokuGenerator
                 {
                     minRemovals = 40,
                     maxRemovals = 52,
-                    targetScore = 220f
+                    targetScore = 50f
                 };
 
             case Difficulty.Hard:
@@ -244,7 +247,7 @@ public class SudokuGenerator
                 {
                     minRemovals = 50,
                     maxRemovals = 60,
-                    targetScore = 450f
+                    targetScore = 150f
                 };
         }
 
