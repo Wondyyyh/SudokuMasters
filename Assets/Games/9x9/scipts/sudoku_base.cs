@@ -64,8 +64,7 @@ public class sudoku_base : MonoBehaviour
             {
                 var obj = Instantiate(cellPrefab, gridParent);
                 // try to find TMP_Text and Image on prefab (common convention)
-                var label = obj.GetComponentInChildren<TMP_Text>();
-                var img = obj.GetComponent<Image>() ?? obj.GetComponentInChildren<Image>();
+                var label = obj.GetComponentInChildren<TMP_Text>();                
 
                 // get or add sudoku_cell component (must exist on prefab ideally)
                 var cellComp = obj.GetComponent<sudoku_cell>();
@@ -76,7 +75,7 @@ public class sudoku_base : MonoBehaviour
                 cellValues.Add(cellComp, value);
                 bool isGiven = value != 0;
                 if (value == 0) emptycounter++;
-                cellComp.Initialize(this, r, c, value, isGiven, label, img);
+                cellComp.Initialize(this, r, c, value, isGiven, label);
 
                 // store reference for movement/select
                 cells[r, c] = cellComp;
@@ -116,13 +115,18 @@ public class sudoku_base : MonoBehaviour
 
         // empty cell selected, clear all highlights
         if (value == null)
+        {
             keys.ForEach(kv => kv.SetSelected(false));
+            keys.Where(kv => kv.currentMarkers.Count > 0).ToList().ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(null)));
+            StartCoroutine(sudoku_cell.Selected?.HighLight_currNumb_Markers(null));
+        }
 
         // higlight all cells with same value as current selected cell
         else
         {
             keys.Where(kv => kv.currentValue == value).ToList().ForEach(kv => kv.SetSelected(true));
             keys.Where(kv => kv.currentValue != value).ToList().ForEach(kv => kv.SetSelected(false));
+            keys.Where(kv => kv.currentMarkers.Count > 0).ToList().ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(value)));
         }
     }
     public bool ValidateMove(int row, int col, int value)

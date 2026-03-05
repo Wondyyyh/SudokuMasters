@@ -1,5 +1,8 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -7,7 +10,9 @@ using UnityEngine.UI;
 public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 {
     [SerializeField] private GameObject lil_numb_pref;
-    [SerializeField] private GameObject lil_numbs_parent;
+    [SerializeField] private Transform[] lil_numbs_parents;
+    [SerializeField] private GameObject mid_lil_numb_pref;
+    [SerializeField] private Transform mid_lil_parent;
     int row, col;
     bool isGiven, waitingForMarker = false;
     public bool isCorrect = false;
@@ -43,16 +48,15 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     public bool IsGiven => isGiven;
 
     // current pencil markers for this cell (if any)
-    Dictionary<int, GameObject> currentMarkers = new();
+    public Dictionary<int, (GameObject, Image)> currentMarkers = new();
 
-    public void Initialize(sudoku_base boardRef, int r, int c, int value, bool given, TMP_Text labelRef, Image bg)
+    public void Initialize(sudoku_base boardRef, int r, int c, int value, bool given, TMP_Text labelRef)
     {
         board = boardRef;
         row = r;
         col = c;
         isGiven = given;
         label = labelRef;
-        background = bg;
 
         currentValue = value;
         UpdateVisuals();
@@ -114,7 +118,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
         if (shiftPressed || waitingForMarker)
         {
-            ShowPencilMarker(number);
+            AddPencilMarker(number, shiftPressed);
         }
         else
         {
@@ -135,16 +139,40 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     }
 
     // instantiate pencil marker under the appropriate child of lil_numbs_parent
-    void ShowPencilMarker(int number)
+    void AddPencilMarker(int number, bool shifted)
     {
-        if (number < 1 || number > 9) return; // invalid
-        if (currentMarkers.ContainsKey(number)) return; // already shown
+        if (number < 1 || number > 9) return; // invalid input
 
-        // instantiate under the specific number placeholder so layout/positioning is correct
-        var target = lil_numbs_parent.transform.GetChild(number - 1);
-        var currentMarker = Instantiate(lil_numb_pref, target);
+        // already shown => toggle off (destroy)
+        if (currentMarkers.ContainsKey(number)) 
+        { 
+            Destroy(currentMarkers[number].Item1);
+            currentMarkers.Remove(number);
+            return;
+        }
+
+        // find available parent slot
+        Transform target_parent = null;
+        GameObject markerType;
+        if (shifted) 
+        {
+            if (mid_lil_parent.childCount > 2) return;
+            target_parent = mid_lil_parent;
+            markerType = mid_lil_numb_pref;
+        }
+        else
+        {
+            if(lil_numbs_parents.All(x => x.childCount > 0)) return;
+            target_parent = lil_numbs_parents.Where(x => x.childCount == 0).First();
+            markerType = lil_numb_pref;
+        }
+
+        // create new marker and track it
+        var currentMarker = Instantiate(markerType, target_parent);
         currentMarker.transform.localPosition = Vector3.zero;
-        currentMarkers.Add(number, currentMarker);
+        var img = currentMarker.GetComponentInChildren<Image>();
+        img.color = selectedColor;
+        currentMarkers.Add(number, (currentMarker, img));
 
         // set marker text if TMP present
         var txt = currentMarker.GetComponentInChildren<TMP_Text>();
@@ -156,7 +184,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
         if (currentMarkers.Count > 0)
         {
             foreach (var marker in currentMarkers.Values)
-                Destroy(marker);
+                Destroy(marker.Item1);
             currentMarkers.Clear();
         }
     }
@@ -165,9 +193,24 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     {
         if (background == null) return; // safety check
 
-        if (sel)        
-            background.color = this == Selected ? selectedColor : highlightedColor;        
+        if (sel)
+            background.color = this == Selected ? selectedColor : highlightedColor;
         else { background.color = normalColor; waitingForMarker = false; }
+    }
+
+    public IEnumerator HighLight_currNumb_Markers(int? number)
+    {
+        yield return null;        
+        
+        foreach (var marker in currentMarkers)
+        {
+            if (marker.Key == number)
+            {
+                marker.Value.Item2.enabled = true;
+                marker.Value.Item2.color = highlightedColor;            
+            }
+            else marker.Value.Item2.enabled = false;
+        }
     }
 
     void UpdateVisuals()
