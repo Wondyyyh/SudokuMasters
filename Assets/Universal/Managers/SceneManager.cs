@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -49,11 +48,12 @@ public class SceneManager : MonoBehaviour
         {
             s.SetActive(false);
         }
+
         // Show the requested scene
         currScene = scene;
         sceneObjects[(int)currScene].SetActive(true);
 
-        // gameview -> toggle bottom bar
+        // gameview -> toggle bottom bar off
         if (currScene == Scene.GameView)
             BottomPanel.SetActive(false);
         else if (BottomPanel.activeSelf == false)

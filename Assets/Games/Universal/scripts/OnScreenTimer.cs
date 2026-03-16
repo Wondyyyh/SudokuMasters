@@ -37,7 +37,6 @@ public class OnScreenTimer : MonoBehaviour
 
         return stopTime - startTime;
     }
-
     public void PauseTimer()
     {
         if (!isRunning) return; // block double calls

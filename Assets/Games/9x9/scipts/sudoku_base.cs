@@ -1,4 +1,5 @@
-﻿using System;
+﻿using JetBrains.Annotations;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,9 +19,7 @@ public class sudoku_base : MonoBehaviour
     OnScreenTimer timer => GetComponentInChildren<OnScreenTimer>();
     ProgressBar progressBar => GetComponentInChildren<ProgressBar>();
 
-    public Dictionary<sudoku_cell, int> cellValues = new();
-
-    SudokuGenerator SudokuGenerator = new();
+    public Dictionary<sudoku_cell, int> cellValues = new();    
 
     // keep direct references for movement/select logic
     private sudoku_cell[,] cells = new sudoku_cell[9, 9];
@@ -92,12 +91,10 @@ public class sudoku_base : MonoBehaviour
 
         puzzle[row, col] = value;
         cellComp.isCorrect = value != 0 && validMove;
-
-        // optional: could do more bookkeeping here
+        
         if (IsSolved())
         {
-            Debug.Log($"Sudoku solved in time of: {timer.StopTimer()}");
-            SceneManager.instance.ActivateView(SceneManager.Scene.WinScreen);
+            WinGame();
         }
         if (validMove)
         {
@@ -155,7 +152,14 @@ public class sudoku_base : MonoBehaviour
         SceneManager.instance.DeactivateView(SceneManager.Scene.PauseMenu);
         timer.ResumeTimer();
     }
-
+    public void WinGame()
+    {
+        TimeSpan timeTaken = timer.StopTimer();
+        Debug.Log($"Sudoku solved in time of: {timeTaken}");
+        SceneManager.instance.ActivateView(SceneManager.Scene.WinScreen);
+        int score = 0, mistakes = 0, stars = 0;
+        PlayerSaveData.instance.AddPlayedGame(timeTaken, MovesCount, score, mistakes, stars, "9x9", GameSettings.SelectedDifficulty.ToString());
+    }
     // movement handler: dr = -1..1, dc = -1..1
     private void OnMoveSelection(int dr, int dc)
     {
