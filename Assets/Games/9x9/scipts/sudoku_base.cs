@@ -1,11 +1,9 @@
-﻿using JetBrains.Annotations;
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class sudoku_base : MonoBehaviour
 {
@@ -114,8 +112,11 @@ public class sudoku_base : MonoBehaviour
         if (value == null)
         {
             keys.ForEach(kv => kv.SetSelected(false));
-            keys.Where(kv => kv.currentMarkers.Count > 0).ToList().ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(null)));
-            StartCoroutine(sudoku_cell.Selected?.HighLight_currNumb_Markers(null));
+            keys.Where(kv => kv.cornerMarkers.Count > 0 || kv.middleMarkers.Count > 0).ToList().
+                ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(null)));
+
+            if(sudoku_cell.Selected != null)
+                StartCoroutine(sudoku_cell.Selected.HighLight_currNumb_Markers(null));
         }
 
         // higlight all cells with same value as current selected cell
@@ -123,7 +124,8 @@ public class sudoku_base : MonoBehaviour
         {
             keys.Where(kv => kv.currentValue == value).ToList().ForEach(kv => kv.SetSelected(true));
             keys.Where(kv => kv.currentValue != value).ToList().ForEach(kv => kv.SetSelected(false));
-            keys.Where(kv => kv.currentMarkers.Count > 0).ToList().ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(value)));
+            keys.Where(kv => kv.cornerMarkers.Count > 0 || kv.middleMarkers.Count > 0).ToList().
+                ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(value)));
         }
     }
     public bool ValidateMove(int row, int col, int value)

@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -24,7 +23,9 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
     Color normalColor = Color.white;
     Color selectedColor = new Color(0.5f, 0.92f, 1f);
+    Color selectedColor1 = new Color(0.55f, 0.99f, 0.55f);
     Color highlightedColor = Color.darkGray;
+    Color highlightedColor_lilnumb = Color.gray4;
 
     // currently selected cell (keyboard target)
     static sudoku_cell s_selected;
@@ -48,7 +49,8 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     public bool IsGiven => isGiven;
 
     // current pencil markers for this cell (if any)
-    public Dictionary<int, (GameObject, Image)> currentMarkers = new();
+    public Dictionary<int, (GameObject, Image)> cornerMarkers = new();
+    public Dictionary<int, (GameObject, Image)> middleMarkers = new();
 
     public void Initialize(sudoku_base boardRef, int r, int c, int value, bool given, TMP_Text labelRef)
     {
@@ -87,7 +89,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
 
         // select for pencil marker input
         else if (eventData.button == PointerEventData.InputButton.Right)
-        { Selected = Selected == this ? null : this; waitingForMarker = true; }
+        { waitingForMarker = true; Selected = Selected == this ? null : this; }
 
         bool showSame = currentValue != 0 && Selected != null;
         board.ShowAllSameValuesOnGrid(showSame ? currentValue : null);
@@ -143,50 +145,94 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
     {
         if (number < 1 || number > 9) return; // invalid input
 
-        // already shown => toggle off (destroy)
-        if (currentMarkers.ContainsKey(number)) 
-        { 
-            Destroy(currentMarkers[number].Item1);
-            currentMarkers.Remove(number);
+        // already shown => destroy marker
+        if (cornerMarkers.ContainsKey(number))
+        {
+            Destroy(cornerMarkers[number].Item1);
+            cornerMarkers.Remove(number);
+
+            // reorder corners after removing
+            int i = 0;
+            foreach (var marker in cornerMarkers.OrderBy(x => x.Key))
+            {
+                marker.Value.Item1.transform.SetParent(lil_numbs_parents[i]);
+                marker.Value.Item1.transform.localPosition = Vector3.zero;
+                i++;
+            }
+            return;
+        }
+        if (middleMarkers.ContainsKey(number))
+        {
+            Destroy(middleMarkers[number].Item1);
+            middleMarkers.Remove(number);
+            // no need for ordering here
             return;
         }
 
-        // find available parent slot
+        // common vars
         Transform target_parent = null;
-        GameObject markerType;
-        if (shifted) 
+        GameObject markerType = null;
+
+        if (shifted) MiddleMarkerAdd();
+        else CornerMarkerAdd();
+
+        void MiddleMarkerAdd()
         {
-            if (mid_lil_parent.childCount > 2) return;
+            if (mid_lil_parent.childCount > 2) return; // early exit -> no slots available
             target_parent = mid_lil_parent;
             markerType = mid_lil_numb_pref;
+
+            CreateMarker();
+
+            // reorder middles after adding
+            int i = 0;
+            foreach (var marker in middleMarkers.OrderBy(x => x.Key))
+            { marker.Value.Item1.transform.SetSiblingIndex(i); i++; }
         }
-        else
+        void CornerMarkerAdd()
         {
-            if(lil_numbs_parents.All(x => x.childCount > 0)) return;
+            if (lil_numbs_parents.All(x => x.childCount > 0)) return; // early exit -> no slots available
             target_parent = lil_numbs_parents.Where(x => x.childCount == 0).First();
             markerType = lil_numb_pref;
+
+            CreateMarker();
+
+            // reorder corners after adding
+            int i = 0;
+            foreach (var marker in cornerMarkers.OrderBy(x => x.Key))
+            {
+                marker.Value.Item1.transform.SetParent(lil_numbs_parents[i]);
+                marker.Value.Item1.transform.localPosition = Vector3.zero;
+                i++;
+            }
         }
 
-        // create new marker and track it
-        var currentMarker = Instantiate(markerType, target_parent);
-        currentMarker.transform.localPosition = Vector3.zero;
-        var img = currentMarker.GetComponentInChildren<Image>();
-        img.color = selectedColor;
-        currentMarkers.Add(number, (currentMarker, img));
+        void CreateMarker()
+        {
+            // create new marker and track it
+            var currentMarker = Instantiate(markerType, target_parent);
+            currentMarker.transform.localPosition = Vector3.zero;
+            var img = currentMarker.GetComponentInChildren<Image>();
+            img.color = selectedColor;
 
-        // set marker text if TMP present
-        var txt = currentMarker.GetComponentInChildren<TMP_Text>();
-        if (txt != null) txt.text = number.ToString();
+            if (shifted)
+                middleMarkers.Add(number, (currentMarker, img));
+            else
+                cornerMarkers.Add(number, (currentMarker, img));
+
+            // set marker text if TMP present
+            var txt = currentMarker.GetComponentInChildren<TMP_Text>();
+            if (txt != null) txt.text = number.ToString();
+        }
     }
 
     void ClearPencilMarkers()
     {
-        if (currentMarkers.Count > 0)
-        {
-            foreach (var marker in currentMarkers.Values)
-                Destroy(marker.Item1);
-            currentMarkers.Clear();
-        }
+        foreach (var marker in cornerMarkers.Concat(middleMarkers))
+            Destroy(marker.Value.Item1);
+
+        cornerMarkers.Clear();
+        middleMarkers.Clear();
     }
 
     public void SetSelected(bool sel)
@@ -194,23 +240,31 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler
         if (background == null) return; // safety check
 
         if (sel)
-            background.color = this == Selected ? selectedColor : highlightedColor;
+        {
+            Color clickTypeColor = waitingForMarker ? selectedColor1 : selectedColor;
+            background.color = this == Selected ? clickTypeColor : highlightedColor;
+        }
         else { background.color = normalColor; waitingForMarker = false; }
     }
 
     public IEnumerator HighLight_currNumb_Markers(int? number)
     {
-        yield return null;        
-        
-        foreach (var marker in currentMarkers)
+        yield return null;
+
+        bool markerHighlighted = false;
+        foreach (var marker in cornerMarkers.Concat(middleMarkers))
         {
             if (marker.Key == number)
             {
                 marker.Value.Item2.enabled = true;
-                marker.Value.Item2.color = highlightedColor;            
+                marker.Value.Item2.color = highlightedColor_lilnumb;
+                markerHighlighted = true;
             }
             else marker.Value.Item2.enabled = false;
         }
+
+        if(Selected != this)
+            background.color = markerHighlighted ? highlightedColor : normalColor;
     }
 
     void UpdateVisuals()
