@@ -159,7 +159,14 @@ public class sudoku_base : MonoBehaviour
         TimeSpan timeTaken = timer.StopTimer();
         Debug.Log($"Sudoku solved in time of: {timeTaken}");
         SceneManager.instance.ActivateView(SceneManager.Scene.WinScreen);
-        int score = 0, mistakes = 0, stars = 0;
+        int mistakes = 0, stars = 5;
+        int score = GameSettings.SelectedDifficulty switch
+        {
+            Difficulty.Easy => timeTaken < TimeSpan.FromMinutes(5) ? 200 : 100,
+            Difficulty.Medium => timeTaken < TimeSpan.FromMinutes(10) ? 300 : 100,
+            Difficulty.Hard => timeTaken < TimeSpan.FromMinutes(20) ? 400 : 150,
+            _ => 500
+        };
         PlayerSaveData.instance.AddPlayedGame(timeTaken, MovesCount, score, mistakes, stars, "9x9", GameSettings.SelectedDifficulty.ToString());
     }
     // movement handler: dr = -1..1, dc = -1..1

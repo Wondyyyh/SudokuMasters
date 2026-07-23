@@ -11,8 +11,10 @@ public class LeaderBoards_view : MonoBehaviour
     [SerializeField] private List<Button> tab_btns;
     private List<PlayedSoloGame> currSelectedList = new();
     private string currDifficulty = "Easy";
+
     [Header("Static Card")]
-    [SerializeField] private TMPro.TMP_Text name_txt, level_txt, date_txt, time_txt;
+    [SerializeField] private TMPro.TMP_Text name_txt;
+    [SerializeField] private TMPro.TMP_Text level_txt, date_txt, time_txt;
     void OnEnable()
     {
         currSelectedList = new(PlayerSaveData.instance.gameHistory.playedSoloGames);
@@ -29,7 +31,7 @@ public class LeaderBoards_view : MonoBehaviour
             Destroy(t.gameObject);
 
         // Filter by difficulty
-        gameHistory = gameHistory.Where(x => x.difficulty == currDifficulty).ToList();
+        gameHistory = gameHistory.Where(x => x.difficulty == currDifficulty).OrderBy(x => x.time).ToList();
 
         // Create card for each game
         string playerName = PlayerSaveData.instance.playerName;

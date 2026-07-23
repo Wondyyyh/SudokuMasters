@@ -10,6 +10,7 @@ public class InputActionsManager : MonoBehaviour
     public static event Action<int, bool> NumberPressed;
     public static event Action ErasePressed;
     public static event Action PausePressed;
+    public static event Action CtrlPressed;
 
     // Movement: delta row, delta col (row -1 = up, +1 = down; col -1 = left, +1 = right)
     public static event Action<int, int> MovePressed;
@@ -18,6 +19,7 @@ public class InputActionsManager : MonoBehaviour
     private InputAction erase;
     private InputAction pause;
     private InputAction move;
+    private InputAction ctrl;
 
     // repeat behavior
     private Coroutine _moveRepeatCoroutine;
@@ -35,6 +37,7 @@ public class InputActionsManager : MonoBehaviour
 
         // Move is a Vector2 value coming from a 2D composite (WASD and arrows)
         move = new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2");
+        ctrl = new InputAction("Ctrl", InputActionType.Button);
 
         // Explicitly add bindings for top row and numpad - each action gets its own bindings
         for (int i = 1; i <= 9; i++)
@@ -48,6 +51,7 @@ public class InputActionsManager : MonoBehaviour
 
         erase.AddBinding("<Keyboard>/backspace");
         pause.AddBinding("<Keyboard>/escape");
+        ctrl.AddBinding("<Keyboard>/leftCtrl");
 
         // WASD composite
         move.AddCompositeBinding("2DVector")
@@ -67,6 +71,7 @@ public class InputActionsManager : MonoBehaviour
         // Each number action will invoke NumberPressed on performed
         erase.performed += OnErase;
         pause.performed += OnPause;
+        pause.performed += OnCtrl;
         for (int i = 1; i <= 9; i++)
         {
             int idx = i - 1;
@@ -90,6 +95,7 @@ public class InputActionsManager : MonoBehaviour
             numbs[i].Enable();
         erase.Enable();
         pause.Enable();
+        ctrl.Enable();
         move.Enable();
     }
 
@@ -103,6 +109,7 @@ public class InputActionsManager : MonoBehaviour
         }
         erase?.Disable();
         pause?.Disable();
+        ctrl?.Disable();
         move?.Disable();
 
         StopMoveRepeat();
@@ -137,6 +144,13 @@ public class InputActionsManager : MonoBehaviour
             pause.performed -= OnPause;
             pause.Dispose();
             pause = null;
+        }
+
+        if (ctrl != null)
+        {
+            ctrl.performed -= OnCtrl;
+            ctrl.Dispose();
+            ctrl = null;
         }
 
         if (move != null)
@@ -248,5 +262,10 @@ public class InputActionsManager : MonoBehaviour
     {
         if (context.performed)
             PausePressed?.Invoke();
+    }
+    public void OnCtrl(InputAction.CallbackContext context)
+    {
+        if (context.performed)
+            CtrlPressed?.Invoke();
     }
 }
