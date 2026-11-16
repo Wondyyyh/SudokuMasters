@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using TMPro;
 using UnityEngine;
 
@@ -21,6 +20,7 @@ public class sudoku_base : MonoBehaviour
 
     // keep direct references for movement/select logic
     private sudoku_cell[,] cells = new sudoku_cell[9, 9];
+    private int? highlightedNumber;
 
     private void OnEnable()
     {
@@ -104,29 +104,14 @@ public class sudoku_base : MonoBehaviour
     }
     public void ShowAllSameValuesOnGrid(int? value)
     {
-        // create temp list and exclude curr selection
-        var keys = cellValues.Keys.ToList();
-        keys.Remove(sudoku_cell.Selected);
+        highlightedNumber = value;
+        RefreshHighlights();
+    }
 
-        // empty cell selected, clear all highlights
-        if (value == null)
-        {
-            keys.ForEach(kv => kv.SetSelected(false));
-            keys.Where(kv => kv.cornerMarkers.Count > 0 || kv.middleMarkers.Count > 0).ToList().
-                ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(null)));
-
-            if(sudoku_cell.Selected != null)
-                StartCoroutine(sudoku_cell.Selected.HighLight_currNumb_Markers(null));
-        }
-
-        // higlight all cells with same value as current selected cell
-        else
-        {
-            keys.Where(kv => kv.currentValue == value).ToList().ForEach(kv => kv.SetSelected(true));
-            keys.Where(kv => kv.currentValue != value).ToList().ForEach(kv => kv.SetSelected(false));
-            keys.Where(kv => kv.cornerMarkers.Count > 0 || kv.middleMarkers.Count > 0).ToList().
-                ForEach(kv => StartCoroutine(kv.HighLight_currNumb_Markers(value)));
-        }
+    public void RefreshHighlights()
+    {
+        foreach (var cell in cellValues.Keys)
+            cell.HighlightNumber(highlightedNumber);
     }
     public bool ValidateMove(int row, int col, int value)
     {
@@ -173,6 +158,8 @@ public class sudoku_base : MonoBehaviour
     private void OnMoveSelection(int dr, int dc)
     {
         if (dr == 0 && dc == 0) return;
+
+        if (cells[4, 4] == null) return; // generation/grid construction is not finished yet
 
         var current = sudoku_cell.Selected;
         sudoku_cell target = null;

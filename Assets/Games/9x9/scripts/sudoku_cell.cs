@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
@@ -34,8 +33,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
     // multiple-cell marker selection (drag with right mouse)
     static HashSet<sudoku_cell> s_markerSelection = new();
     static bool s_markerDragActive = false;
-    // used to avoid double-toggle when OnPointerDown already added this cell
-    bool skipNextClickToggle = false;
+    int? highlightedNumber;
 
     // expose selection publicly so board/manager can move selection
     public static sudoku_cell Selected
@@ -44,8 +42,9 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         set
         {
             if (s_selected == value) return;
-            if (s_selected != null) s_selected.SetSelected(false);
+            var previous = s_selected;
             s_selected = value;
+            if (previous != null) previous.SetSelected(false);
             if (s_selected != null) s_selected.SetSelected(true);
         }
     }
@@ -82,6 +81,9 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
 
     void OnDisable()
     {
+        s_markerSelection.Remove(this);
+        waitingForMarker = false;
+        if (s_markerSelection.Count == 0) s_markerDragActive = false;
         if (s_selected == this) Selected = null;
         InputActionsManager.NumberPressed -= HandleDigitEntry;
         InputActionsManager.ErasePressed -= OnErase;
@@ -115,6 +117,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         {
             ClearPencilMarkers();
             UpdateVisuals();
+            board.RefreshHighlights();
             return;
         }
 
@@ -128,6 +131,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
     }
     public void OnPause()
     {
+        ClearMarkerSelection();
         if (Selected != this) return;
         Selected = null; // deselect on pause
         Debug.Log("Pause triggered from cell");
@@ -140,6 +144,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         if (isGiven || isCorrect) return;
 
         bool selectionActive = s_markerSelection.Count > 0;
+        if (selectionActive ? !s_markerSelection.Contains(this) : Selected != this) return;
 
         // If doing pencil/marker entry (shift, waitingForMarker or multi-selection) -> add marker(s)
         if (shiftPressed || waitingForMarker || selectionActive)
@@ -150,11 +155,12 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
                 if (s_markerSelection.Contains(this))
                     AddPencilMarker(number, shiftPressed);
             }
-            else
+            else if (Selected == this)
             {
                 AddPencilMarker(number, shiftPressed);
             }
 
+            board.ShowAllSameValuesOnGrid(number);
             return;
         }
 
@@ -179,21 +185,18 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         // directly set marker visual so we don't rely on Selected logic
         if (background != null) background.color = selectedColor1;
 
-        // late checker show visuals are correctly displayed
-        foreach (var marker in s_markerSelection)
-            if (marker.background.color != selectedColor1)
-                marker.background.color = selectedColor1;
     }
 
     // clear the global marker selection
     static void ClearMarkerSelection()
     {
-        foreach (var c in s_markerSelection.ToList())
+        var previous = s_markerSelection.ToList();
+        s_markerSelection.Clear();
+        foreach (var c in previous)
         {
             c.waitingForMarker = false;
-            if (c.background != null) c.background.color = c.normalColor;
+            c.RefreshBackground();
         }
-        s_markerSelection.Clear();
     }
 
     // remove this cell from the global marker selection and refresh visuals for remaining cells
@@ -203,7 +206,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
 
         s_markerSelection.Remove(this);
         waitingForMarker = false;
-        if (background != null) background.color = normalColor;
+        RefreshBackground();
 
         // ensure remaining selected-marker cells keep the correct marker color
         foreach (var c in s_markerSelection)
@@ -233,7 +236,6 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         bool ctrl = false;
         var kb = UnityEngine.InputSystem.Keyboard.current;
         if (kb != null) ctrl = kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed;
-        else ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
 
         s_markerDragActive = true;
         // if ctrl is not held, start a fresh selection for this drag
@@ -242,8 +244,6 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         
         // add this cell to current drag selection (unless it's given/solved)
         AddToMarkerSelection();
-        // ensure the upcoming click event does not immediately toggle this cell again
-        skipNextClickToggle = true;
     }
 
     public void OnPointerUp(PointerEventData eventData)
@@ -368,47 +368,35 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
 
     public void SetSelected(bool sel)
     {
-        if (background == null) return; // safety check        
-
-        if (sel)
-        {
-            Color clickTypeColor = waitingForMarker ? selectedColor1 : selectedColor;
-            background.color = this == Selected ? clickTypeColor : highlightedColor;
-        }
-        else
-        {
-            // if this cell is currently part of the marker-selection, preserve those visuals
-            if (s_markerSelection.Contains(this))
-            {
-                background.color = selectedColor1;
-                waitingForMarker = true;
-            }
-            else
-            {
-                background.color = normalColor;
-                waitingForMarker = false;
-            }
-        }
+        RefreshBackground();
     }
 
-    public IEnumerator HighLight_currNumb_Markers(int? number)
+    public void HighlightNumber(int? number)
     {
-        yield return null;
-
-        bool markerHighlighted = false;
+        highlightedNumber = number;
         foreach (var marker in cornerMarkers.Concat(middleMarkers))
         {
-            if (marker.Key == number)
-            {
-                marker.Value.Item2.enabled = true;
-                marker.Value.Item2.color = highlightedColor_lilnumb;
-                markerHighlighted = true;
-            }
-            else marker.Value.Item2.enabled = false;
+            var image = marker.Value.Item2;
+            if (image == null) continue;
+            image.enabled = marker.Key == number;
+            image.color = highlightedColor_lilnumb;
         }
 
-        if(Selected != this)
-            background.color = markerHighlighted ? highlightedColor : normalColor;
+        RefreshBackground();
+    }
+
+    void RefreshBackground()
+    {
+        if (background == null) return;
+        bool matchingMarker = highlightedNumber.HasValue &&
+            (cornerMarkers.ContainsKey(highlightedNumber.Value) || middleMarkers.ContainsKey(highlightedNumber.Value));
+
+        // Selection takes priority over search highlights. Rendering never changes input mode.
+        if (s_markerSelection.Contains(this)) background.color = selectedColor1;
+        else if (Selected == this) background.color = selectedColor;
+        else if (matchingMarker) background.color = selectedColor1;
+        else if (highlightedNumber.HasValue && currentValue == highlightedNumber.Value) background.color = highlightedColor;
+        else background.color = normalColor;
     }
 
     void UpdateVisuals()

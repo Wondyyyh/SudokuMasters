@@ -45,13 +45,15 @@ public class InputActionsManager : MonoBehaviour
             int idx = i - 1;
             numbs[idx] = new InputAction($"NumberKey{i}", InputActionType.Button);
             // explicit top-row (digit) and numpad keys
-            numbs[idx].AddBinding($"<Keyboard>/digit{i}");
+            numbs[idx].AddBinding($"<Keyboard>/{i}");
             numbs[idx].AddBinding($"<Keyboard>/numpad{i}");
         }
 
         erase.AddBinding("<Keyboard>/backspace");
+        erase.AddBinding("<Keyboard>/delete");
         pause.AddBinding("<Keyboard>/escape");
         ctrl.AddBinding("<Keyboard>/leftCtrl");
+        ctrl.AddBinding("<Keyboard>/rightCtrl");
 
         // WASD composite
         move.AddCompositeBinding("2DVector")
@@ -71,7 +73,7 @@ public class InputActionsManager : MonoBehaviour
         // Each number action will invoke NumberPressed on performed
         erase.performed += OnErase;
         pause.performed += OnPause;
-        pause.performed += OnCtrl;
+        ctrl.performed += OnCtrl;
         for (int i = 1; i <= 9; i++)
         {
             int idx = i - 1;
@@ -87,9 +89,12 @@ public class InputActionsManager : MonoBehaviour
         }
 
         // movement: use started/canceled to support repeat on hold
-        move.started += OnMoveStarted;
+        move.performed += OnMoveStarted;
         move.canceled += OnMoveCanceled;
+    }
 
+    private void OnEnable()
+    {
         // Enable after setup
         for (int i = 0; i < numbs.Length; i++)
             numbs[i].Enable();
@@ -155,7 +160,7 @@ public class InputActionsManager : MonoBehaviour
 
         if (move != null)
         {
-            move.started -= OnMoveStarted;
+            move.performed -= OnMoveStarted;
             move.canceled -= OnMoveCanceled;
             move.Dispose();
             move = null;
@@ -164,12 +169,13 @@ public class InputActionsManager : MonoBehaviour
 
     private void OnMoveStarted(InputAction.CallbackContext ctx)
     {
+        bool wasMoving = _currentMoveVector != Vector2.zero;
         _currentMoveVector = ctx.ReadValue<Vector2>();
         var dir = GetDirectionFromVector(_currentMoveVector);
         if (dir.dr != 0 || dir.dc != 0)
         {
             // immediate first step
-            MovePressed?.Invoke(dir.dr, dir.dc);
+            if (!wasMoving) MovePressed?.Invoke(dir.dr, dir.dc);
             // start repeat coroutine
             if (_moveRepeatCoroutine == null)
                 _moveRepeatCoroutine = StartCoroutine(MoveRepeatCoroutine());
