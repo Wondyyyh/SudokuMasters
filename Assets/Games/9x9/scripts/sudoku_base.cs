@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -26,11 +26,13 @@ public class sudoku_base : MonoBehaviour
     {
         InputActionsManager.PausePressed += PauseGame;
         InputActionsManager.MovePressed += OnMoveSelection;
+        SudokuAssistSettings.Changed += RefreshHighlights;
     }
     private void OnDisable()
     {
         InputActionsManager.PausePressed -= PauseGame;
         InputActionsManager.MovePressed -= OnMoveSelection;
+        SudokuAssistSettings.Changed -= RefreshHighlights;
     }
     IEnumerator Start()
     {
@@ -90,6 +92,12 @@ public class sudoku_base : MonoBehaviour
         puzzle[row, col] = value;
         cellComp.isCorrect = value != 0 && validMove;
         
+        if (validMove && value != 0 && SudokuAssistSettings.CleanNotes)
+        {
+            foreach (var peer in cellValues.Keys)
+                if (peer != cellComp && peer.SharesUnitWith(cellComp)) peer.RemovePencilMarker(value);
+        }
+
         if (IsSolved())
         {
             WinGame();

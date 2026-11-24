@@ -46,6 +46,8 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
             s_selected = value;
             if (previous != null) previous.SetSelected(false);
             if (s_selected != null) s_selected.SetSelected(true);
+            if (previous != null && previous.board != null) previous.board.RefreshHighlights();
+            if (s_selected != null && s_selected.board != null && (previous == null || previous.board != s_selected.board)) s_selected.board.RefreshHighlights();
         }
     }
 
@@ -230,7 +232,7 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
 
         // begin drag selection
         // force-clear keyboard selection visuals immediately
-        if (s_selected != null) { s_selected.SetSelected(false); s_selected = null; }
+        Selected = null;
         board.ShowAllSameValuesOnGrid(null);
         // detect ctrl key for multi-select behavior (supports new Input System)
         bool ctrl = false;
@@ -357,6 +359,41 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         }
     }
 
+    public bool SharesUnitWith(sudoku_cell other)
+    {
+        return other != null && (row == other.row || col == other.col ||
+            (row / 3 == other.row / 3 && col / 3 == other.col / 3));
+    }
+
+    // Remove only this candidate, leaving other notes and their ordering intact.
+    public void RemovePencilMarker(int number)
+    {
+        if (cornerMarkers.TryGetValue(number, out var corner))
+        {
+            cornerMarkers.Remove(number);
+            if (corner.Item1 != null)
+            {
+                corner.Item1.transform.SetParent(null);
+                Destroy(corner.Item1);
+            }
+            int index = 0;
+            foreach (var marker in cornerMarkers.OrderBy(x => x.Key))
+            {
+                marker.Value.Item1.transform.SetParent(lil_numbs_parents[index++]);
+                marker.Value.Item1.transform.localPosition = Vector3.zero;
+            }
+        }
+        if (middleMarkers.TryGetValue(number, out var middle))
+        {
+            middleMarkers.Remove(number);
+            if (middle.Item1 != null)
+            {
+                middle.Item1.transform.SetParent(null);
+                Destroy(middle.Item1);
+            }
+        }
+    }
+
     void ClearPencilMarkers()
     {
         foreach (var marker in cornerMarkers.Concat(middleMarkers))
@@ -396,6 +433,8 @@ public class sudoku_cell : MonoBehaviour, IPointerClickHandler, IPointerEnterHan
         else if (Selected == this) background.color = selectedColor;
         else if (matchingMarker) background.color = selectedColor1;
         else if (highlightedNumber.HasValue && currentValue == highlightedNumber.Value) background.color = highlightedColor;
+        else if (SudokuAssistSettings.HighlightPeers && Selected != null && Selected.board == board && SharesUnitWith(Selected))
+            background.color = new Color(0.91f, 0.95f, 1f);
         else background.color = normalColor;
     }
 
